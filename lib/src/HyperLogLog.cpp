@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include <cmath>
 #include "../include/HyperLogLog.hpp"
 #include "../nthash/nthash.hpp"
