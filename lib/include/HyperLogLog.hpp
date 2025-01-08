@@ -1,6 +1,7 @@
 #ifndef HYPERLOGLOG_HPP
 #define HYPERLOGLOG_HPP
 
+#include <cstdint>
 #include <vector>
 
 class HyperLogLog
