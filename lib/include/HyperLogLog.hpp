@@ -9,6 +9,7 @@ class HyperLogLog
         HyperLogLog(uint8_t kmer_length, uint8_t msb_length);
         void add(char const * const seq, std::size_t length) noexcept;
         std::size_t count() const noexcept;
+        double standard_error() const noexcept;
         HyperLogLog operator+(const HyperLogLog& other) const;
 
     private:

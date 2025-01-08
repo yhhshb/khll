@@ -30,6 +30,12 @@ HyperLogLog::count() const noexcept
     return static_cast<std::size_t>(bias_correction(raw_estimate));
 }
 
+double
+HyperLogLog::standard_error() const noexcept
+{
+    return static_cast<double>(1.04) / sqrt(registers.size());
+}
+
 HyperLogLog
 HyperLogLog::operator+(const HyperLogLog& other) const
 {
