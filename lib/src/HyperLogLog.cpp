@@ -3,12 +3,45 @@
 #include "../include/HyperLogLog.hpp"
 #include "../nthash/nthash.hpp"
 
-HyperLogLog::HyperLogLog(uint8_t kmer_length, uint8_t msb_length)
-    : k(kmer_length), b(msb_length), shift(8 * sizeof(hash_t) - b), mask((static_cast<std::size_t>(1) << shift) - 1)
+namespace sketching {
+
+HyperLogLog::HyperLogLog() 
+    : k(0), b(0), shift(0), mask(0) 
+{}
+
+HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
+    : k(kmer_length)
 {
-    registers.resize(static_cast<std::size_t>(1) << b);
-    for (auto& r : registers) r = 0;
-    alpha_m = 0.7213 / (1 + 1.079 / registers.size());
+    if (error_rate < 0 or error_rate > 1) throw std::invalid_argument("error rate should be in (0, 1)");
+    auto x = double(1.04) / error_rate;
+    auto l = static_cast<std::size_t>(std::ceil(std::log2l(x * x)));
+    if (l > std::numeric_limits<uint8_t>::max()) throw std::invalid_argument("error rate too low (too many buckets)");
+    b = static_cast<uint8_t>(l);
+    sanitize_kmer_length(k);
+    sanitize_b(b);
+    init();
+    clear();
+}
+
+HyperLogLog::HyperLogLog(uint8_t kmer_length, uint8_t msb_length)
+    : k(kmer_length), b(msb_length)
+{
+    sanitize_kmer_length(k);
+    sanitize_b(b);
+    init();
+    clear();
+}
+
+HyperLogLog::HyperLogLog(std::istream& istrm)
+{
+    // load k, b;
+    istrm.read(reinterpret_cast<char*>(&k), sizeof(k));
+    sanitize_kmer_length(k);
+    istrm.read(reinterpret_cast<char*>(&b), sizeof(b));
+    sanitize_b(b);
+    init();
+    // load registers
+    istrm.read(reinterpret_cast<char*>(&registers[0]), registers.size()); // uint8_t so no need to endianess nor sizeof
 }
 
 void
@@ -22,6 +55,12 @@ HyperLogLog::add(char const * const seq, std::size_t length) noexcept
         const std::size_t v = clz(lsb) + 1 - b;
         if (v > registers.at(idx)) registers[idx] = v;
     }
+}
+
+void 
+HyperLogLog::clear() noexcept
+{
+    for (auto& r : registers) r = 0;
 }
 
 std::size_t
@@ -40,12 +79,65 @@ HyperLogLog::standard_error() const noexcept
 HyperLogLog
 HyperLogLog::operator+(const HyperLogLog& other) const
 {
-    if (not compatible(other)) throw std::runtime_error("Merging incompatible sketch");
+    if (not compatible(other)) throw std::runtime_error("[operator+] Adding two incompatible sketches");
     HyperLogLog toRet(k, b);
     for (std::size_t i = 0; i < registers.size(); ++i) {
         toRet.registers[i] = std::max(registers.at(i), other.registers.at(i));
     }
     return toRet;
+}
+
+HyperLogLog& 
+HyperLogLog::operator+=(const HyperLogLog& other)
+{
+    if (not compatible(other)) throw std::runtime_error("[operator+=] Merging incompatible sketches");
+    for (std::size_t i = 0; i < registers.size(); ++i) {
+        registers[i] = std::max(registers.at(i), other.registers.at(i));
+    }
+    return *this;
+}
+
+void 
+HyperLogLog::store(std::ostream& ostrm) const
+{
+    // save k, b;
+    ostrm.write(reinterpret_cast<const char*>(&k), sizeof(k));
+    ostrm.write(reinterpret_cast<const char*>(&b), sizeof(b));
+    ostrm.write(reinterpret_cast<const char*>(registers.data()), registers.size()); // uint8_t so no need to endianess nor sizeof
+}
+
+void 
+HyperLogLog::store(std::string const& sketch_file) const
+{
+    std::ofstream ostrm(sketch_file, std::ios::binary);
+    return store(ostrm);
+}
+
+HyperLogLog 
+HyperLogLog::load(std::string const& sketch_filename) {
+    std::ifstream istrm(sketch_filename, std::ios::binary);
+    return HyperLogLog(istrm);
+}
+
+void
+HyperLogLog::init()
+{
+    registers.resize(static_cast<std::size_t>(1) << b);
+    alpha_m = 0.7213 / (1 + 1.079 / registers.size());
+    shift = (8 * sizeof(hash_t) - b);
+    mask = (static_cast<std::size_t>(1) << shift) - 1;
+}
+
+void 
+HyperLogLog::sanitize_kmer_length(std::size_t kmer_length) const
+{
+    if (kmer_length > 32) throw std::invalid_argument("k-mer length should be 0 < k <= 32");
+}
+
+void 
+HyperLogLog::sanitize_b(std::size_t bval) const 
+{
+    if (bval >= 64) throw std::invalid_argument("Number of indexing bits should be < 64");
 }
 
 bool 
@@ -84,3 +176,5 @@ HyperLogLog::bias_correction(double raw_estimate) const noexcept
     }
     return raw_estimate;
 }
+
+} // namespace sketching
