@@ -13,6 +13,7 @@ int build_main(const argparse::ArgumentParser& parser)
 {
     using namespace sketching;
     auto k = parser.get<std::size_t>("-k");
+    auto g = parser.get<bool>("--ignore-short-reads");
     auto b = parser.get<std::size_t>("-b");
     auto e = parser.get<double>("-e");
     auto passthrough = parser.get<bool>("--passthrough");
@@ -41,6 +42,7 @@ int build_main(const argparse::ArgumentParser& parser)
 
     kseq_t* seq = kseq_init(fp);
     while (kseq_read(seq) >= 0) {
+        if (g and seq->seq.l < k) continue; 
         hll.add(seq->seq.s, seq->seq.l);
         if (passthrough) {
             std::cout <<  ">" << std::string(seq->name.s, seq->name.l) << "\n";
@@ -73,6 +75,10 @@ argparse::ArgumentParser get_parser_build()
         .help("k-mer size")
         .scan<'u', std::size_t>()
         .required();
+    parser.add_argument("-g", "--ignore-short-reads")
+        .help("ignore reads shorter than k")
+        .default_value(true)
+        .implicit_value(true);
     parser.add_argument("-b")
         .help("header size (number of msb bits used as index)")
         .scan<'u', std::size_t>()
