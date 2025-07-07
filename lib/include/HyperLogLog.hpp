@@ -9,12 +9,17 @@ namespace sketching {
 
 class HyperLogLog
 {
+    private:
+        using register_t = uint8_t;
+        
     public:
+        using hash_t = uint64_t;
         HyperLogLog();
         HyperLogLog(uint8_t kmer_length, uint8_t msb_length);
         HyperLogLog(uint8_t kmer_length, double error_rate);
         HyperLogLog(std::istream& istrm);
         void add(char const * const seq, std::size_t length) noexcept;
+        void add_fast(char const * const seq, std::size_t length, std::vector<hash_t>& buffer) noexcept;
         void clear() noexcept;
         std::size_t size() const noexcept;
         std::size_t count() const noexcept;
@@ -26,8 +31,6 @@ class HyperLogLog
         static HyperLogLog load(std::string const& sketch_filename);
 
     private:
-        using register_t = uint8_t;
-        using hash_t = uint64_t;
         friend HyperLogLog load_hll(std::istream& istrm);
         void init();
         void sanitize_kmer_length(std::size_t kmer_length) const;

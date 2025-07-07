@@ -10,7 +10,7 @@ HyperLogLog::HyperLogLog()
 {}
 
 HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
-    : k(kmer_length)
+    : k(kmer_length), total_seen_kmers(0)
 {
     if (error_rate < 0 or error_rate > 1) throw std::invalid_argument("error rate should be in (0, 1)");
     auto x = double(1.04) / error_rate;
@@ -24,7 +24,7 @@ HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
 }
 
 HyperLogLog::HyperLogLog(uint8_t kmer_length, uint8_t msb_length)
-    : k(kmer_length), b(msb_length)
+    : k(kmer_length), b(msb_length), total_seen_kmers(0)
 {
     sanitize_kmer_length(k);
     sanitize_b(b);
@@ -53,6 +53,22 @@ HyperLogLog::add(char const * const seq, std::size_t length) noexcept
     while(hasher.roll()) {
         const auto idx = hasher.hashes()[0] >> shift;
         const auto lsb = hasher.hashes()[0] & mask;
+        const std::size_t v = clz(lsb) + 1 - b;
+        if (v > registers.at(idx)) registers[idx] = v;
+        ++total_seen_kmers;
+    }
+}
+
+void
+HyperLogLog::add_fast(char const * const seq, std::size_t length, std::vector<hash_t>& buffer) noexcept
+{
+    auto clz = [](hash_t x) {return x ? __builtin_clzll(x) : 64;};
+    nthash::NtHash hasher(seq, length, 1, k, 0);
+    buffer.clear();
+    while(hasher.roll()) buffer.push_back(hasher.hashes()[0]);
+    for (auto hash : buffer) {
+        const auto idx = hash >> shift;
+        const auto lsb = hash & mask;
         const std::size_t v = clz(lsb) + 1 - b;
         if (v > registers.at(idx)) registers[idx] = v;
         ++total_seen_kmers;

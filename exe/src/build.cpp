@@ -41,9 +41,10 @@ int build_main(const argparse::ArgumentParser& parser)
     }
 
     kseq_t* seq = kseq_init(fp);
+    std::vector<HyperLogLog::hash_t> buffer;
     while (kseq_read(seq) >= 0) {
-        if (g and seq->seq.l < k) continue; 
-        hll.add(seq->seq.s, seq->seq.l);
+        if (g and seq->seq.l < k) continue;
+        hll.add_fast(seq->seq.s, seq->seq.l, buffer);
         if (passthrough) {
             std::cout <<  ">" << std::string(seq->name.s, seq->name.l) << "\n";
             std::cout << std::string(seq->seq.s, seq->seq.l) << "\n";
@@ -63,7 +64,7 @@ int build_main(const argparse::ArgumentParser& parser)
         hll.store(sketch_filename);
     }
 
-    std::cerr << hll.count() << "\n";
+    std::cerr << hll.count() << " / " << hll.size() << "\n";
     return 0;
 }
 
