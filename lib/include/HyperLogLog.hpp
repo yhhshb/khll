@@ -16,6 +16,7 @@ class HyperLogLog
         HyperLogLog(std::istream& istrm);
         void add(char const * const seq, std::size_t length) noexcept;
         void clear() noexcept;
+        std::size_t size() const noexcept;
         std::size_t count() const noexcept;
         double standard_error() const noexcept;
         HyperLogLog operator+(const HyperLogLog& other) const;
@@ -39,6 +40,7 @@ class HyperLogLog
         std::vector<register_t> registers;
         std::size_t shift; // optimization
         std::size_t mask;
+        std::size_t total_seen_kmers; // with repetitions = L1 norm
         double alpha_m;
 };
 

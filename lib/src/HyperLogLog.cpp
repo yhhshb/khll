@@ -6,7 +6,7 @@
 namespace sketching {
 
 HyperLogLog::HyperLogLog() 
-    : k(0), b(0), shift(0), mask(0) 
+    : k(0), b(0), shift(0), mask(0), total_seen_kmers(0)
 {}
 
 HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
@@ -39,6 +39,7 @@ HyperLogLog::HyperLogLog(std::istream& istrm)
     sanitize_kmer_length(k);
     istrm.read(reinterpret_cast<char*>(&b), sizeof(b));
     sanitize_b(b);
+    istrm.read(reinterpret_cast<char*>(&total_seen_kmers), sizeof(total_seen_kmers)); // TODO fix endianess
     init();
     // load registers
     istrm.read(reinterpret_cast<char*>(&registers[0]), registers.size()); // uint8_t so no need to endianess nor sizeof
@@ -54,6 +55,7 @@ HyperLogLog::add(char const * const seq, std::size_t length) noexcept
         const auto lsb = hasher.hashes()[0] & mask;
         const std::size_t v = clz(lsb) + 1 - b;
         if (v > registers.at(idx)) registers[idx] = v;
+        ++total_seen_kmers;
     }
 }
 
@@ -61,6 +63,12 @@ void
 HyperLogLog::clear() noexcept
 {
     for (auto& r : registers) r = 0;
+}
+
+std::size_t
+HyperLogLog::size() const noexcept
+{
+    return total_seen_kmers;
 }
 
 std::size_t
@@ -84,6 +92,7 @@ HyperLogLog::operator+(const HyperLogLog& other) const
     for (std::size_t i = 0; i < registers.size(); ++i) {
         toRet.registers[i] = std::max(registers.at(i), other.registers.at(i));
     }
+    toRet.total_seen_kmers = total_seen_kmers + other.total_seen_kmers;
     return toRet;
 }
 
@@ -94,15 +103,17 @@ HyperLogLog::operator+=(const HyperLogLog& other)
     for (std::size_t i = 0; i < registers.size(); ++i) {
         registers[i] = std::max(registers.at(i), other.registers.at(i));
     }
+    total_seen_kmers += other.total_seen_kmers;
     return *this;
 }
 
 void 
 HyperLogLog::store(std::ostream& ostrm) const
 {
-    // save k, b;
+    // save k, b, total_seen_kmers;
     ostrm.write(reinterpret_cast<const char*>(&k), sizeof(k));
     ostrm.write(reinterpret_cast<const char*>(&b), sizeof(b));
+    ostrm.write(reinterpret_cast<const char*>(&total_seen_kmers), sizeof(total_seen_kmers)); // TODO fix endianess
     ostrm.write(reinterpret_cast<const char*>(registers.data()), registers.size()); // uint8_t so no need to endianess nor sizeof
 }
 

@@ -78,7 +78,7 @@ argparse::ArgumentParser get_parser_build()
     parser.add_argument("-g", "--ignore-short-reads")
         .help("ignore reads shorter than k")
         .default_value(true)
-        .implicit_value(true);
+        .implicit_value(false);
     parser.add_argument("-b")
         .help("header size (number of msb bits used as index)")
         .scan<'u', std::size_t>()

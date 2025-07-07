@@ -42,7 +42,7 @@ int merge_main(const argparse::ArgumentParser& parser)
 argparse::ArgumentParser get_parser_merge()
 {
     argparse::ArgumentParser parser("merge");
-    parser.add_description("Build HyperLogLog from FastX files");
+    parser.add_description("Merge HyperLogLogs");
     parser.add_argument("-i", "--input-lists")
         .help("file(s) listing sketches to be merged (1 sketch filename per row)")
         .nargs(argparse::nargs_pattern::any);
