@@ -3,8 +3,6 @@
 #include "../include/HyperLogLog.hpp"
 #include "../nthash/nthash.hpp"
 
-#include <iostream>
-
 namespace sketching {
 
 HyperLogLog::HyperLogLog() 
@@ -187,7 +185,6 @@ HyperLogLog::harmonic_mean() const noexcept
         auto toadd = 1.0 / (static_cast<std::size_t>(1) << r);
         sum_of_inverses += toadd;
     }
-    std::cerr << "soi = " << sum_of_inverses << "\n";
     return 1.0 / sum_of_inverses;
 }
 
