@@ -12,7 +12,7 @@ int merge_main(const argparse::ArgumentParser& parser)
     using namespace sketching;
     auto file_lists = parser.get<std::vector<std::string>>("--input-lists");
     auto sketches_filenames = parser.get<std::vector<std::string>>("sketches");
-    auto output_filename = parser.get<std::string>("--sketch");
+    auto output_filename = parser.get<std::string>("--output-sketch");
 
     for (auto const& list_filename : file_lists) {
         std::string buffer;
@@ -49,7 +49,7 @@ argparse::ArgumentParser get_parser_merge()
     parser.add_argument("sketches")
         .help("list of sketches to be merged")
         .nargs(argparse::nargs_pattern::any);
-    parser.add_argument("-s", "--sketch")
+    parser.add_argument("-o", "--output-sketch")
         .help("output sketch (optional)")
         .default_value("");
     return parser;
