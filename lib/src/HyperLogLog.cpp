@@ -3,6 +3,8 @@
 #include "../include/HyperLogLog.hpp"
 #include "../nthash/nthash.hpp"
 
+#include <iostream>
+
 namespace sketching {
 
 HyperLogLog::HyperLogLog() 
@@ -90,7 +92,8 @@ HyperLogLog::size() const noexcept
 std::size_t
 HyperLogLog::count() const noexcept
 {
-    const std::size_t raw_estimate = alpha_m * harmonic_mean() * (registers.size() * registers.size());
+    // DO NOT make registers.size() ** 2 alone because if b >= 32 we have an integer overflow
+    const std::size_t raw_estimate = (alpha_m * harmonic_mean() * registers.size()) * registers.size();
     return static_cast<std::size_t>(bias_correction(raw_estimate));
 }
 
@@ -182,9 +185,9 @@ HyperLogLog::harmonic_mean() const noexcept
     double sum_of_inverses = 0;
     for (auto r : registers) {
         auto toadd = 1.0 / (static_cast<std::size_t>(1) << r);
-        // std::cerr << "adding " << toadd << "\n";
         sum_of_inverses += toadd;
     }
+    std::cerr << "soi = " << sum_of_inverses << "\n";
     return 1.0 / sum_of_inverses;
 }
 
