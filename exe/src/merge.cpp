@@ -34,7 +34,7 @@ int merge_main(const argparse::ArgumentParser& parser)
     }
 
     if (output_filename != "") hll.store(output_filename);
-    std::cerr << hll.count() << "\n";
+    std::cerr << hll.count() << " / " << hll.size() << "\n";
 
     return 0;
 }
