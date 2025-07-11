@@ -64,7 +64,7 @@ int build_main(const argparse::ArgumentParser& parser)
         hll.store(sketch_filename);
     }
 
-    std::cerr << hll.count() << " / " << hll.size() << "\n";
+    std::cerr << hll.count() << "," << hll.size() << "\n";
     return 0;
 }
 
@@ -76,14 +76,14 @@ argparse::ArgumentParser get_parser_build()
         .help("k-mer size")
         .scan<'u', std::size_t>()
         .required();
-    parser.add_argument("-g", "--ignore-short-reads")
-        .help("ignore reads shorter than k")
-        .default_value(true)
-        .implicit_value(false);
     parser.add_argument("-b")
         .help("header size (number of msb bits used as index)")
         .scan<'u', std::size_t>()
-        .default_value(std::size_t(12));
+        .required();
+    parser.add_argument("-g", "--ignore-short-reads")
+        .help("ignore reads shorter than k [active]")
+        .default_value(true)
+        .implicit_value(false);
     parser.add_argument("-e")
         .help("error rate of the HLL sketch. Supersedes option -b if present")
         .scan<'f', double>()

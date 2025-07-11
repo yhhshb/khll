@@ -12,7 +12,7 @@ int estimate_main(const argparse::ArgumentParser& parser)
     if (std::filesystem::exists(sketch_filename)) hll = HyperLogLog::load(sketch_filename);
     else throw std::runtime_error("sketch does not exist");
     std::cout << hll.count();
-    if (print_total_kmers) std::cout << " / " << hll.size();
+    if (print_total_kmers) std::cout << "," << hll.size();
     std::cout << "\n";
     return 0;
 }

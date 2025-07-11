@@ -1,15 +1,39 @@
 #include <stdexcept>
 #include <cmath>
+#include <cassert>
 #include "../include/HyperLogLog.hpp"
 #include "../nthash/nthash.hpp"
+
+#include <iostream>
+
+#define BITS_IN_BYTE 8
+
+int clz(const uint32_t x)
+{
+    return x ? __builtin_clz(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
+}
+
+int clz(const uint64_t x)
+{
+    return x ? __builtin_clzll(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
+}
+
+int clz(const __uint128_t x) 
+{
+    uint64_t const* view = reinterpret_cast<uint64_t const*>(&x);
+    if (view[1] == 0) return 64 + clz(view[0]);
+    return clz(view[1]);
+}
 
 namespace sketching {
 
 HyperLogLog::HyperLogLog() 
     : k(0), b(0), shift(0), mask(0), total_seen_kmers(0)
-{}
+{
+    sanitize_endianness();
+}
 
-HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
+HyperLogLog::HyperLogLog(const uint8_t kmer_length, const double error_rate)
     : k(kmer_length), total_seen_kmers(0)
 {
     if (error_rate < 0 or error_rate > 1) throw std::invalid_argument("error rate should be in (0, 1)");
@@ -17,15 +41,17 @@ HyperLogLog::HyperLogLog(uint8_t kmer_length, double error_rate)
     auto l = static_cast<std::size_t>(std::ceil(std::log2l(x * x)));
     if (l > std::numeric_limits<uint8_t>::max()) throw std::invalid_argument("error rate too low (too many buckets)");
     b = static_cast<uint8_t>(l);
+    sanitize_endianness();
     sanitize_kmer_length(k);
     sanitize_b(b);
     init();
     clear();
 }
 
-HyperLogLog::HyperLogLog(uint8_t kmer_length, uint8_t msb_length)
+HyperLogLog::HyperLogLog(const uint8_t kmer_length, const uint8_t msb_length)
     : k(kmer_length), b(msb_length), total_seen_kmers(0)
 {
+    sanitize_endianness();
     sanitize_kmer_length(k);
     sanitize_b(b);
     init();
@@ -46,13 +72,19 @@ HyperLogLog::HyperLogLog(std::istream& istrm)
 }
 
 void
-HyperLogLog::add(char const * const seq, std::size_t length) noexcept
+HyperLogLog::add(char const * const seq, const std::size_t length) noexcept
 {
-    auto clz = [](hash_t x) {return x ? __builtin_clzll(x) : 64;};
-    nthash::NtHash hasher(seq, length, 1, k, 0);
+    nthash::NtHash hasher(
+        seq, 
+        length, 
+        std::max(static_cast<std::size_t>(sizeof(hash_t) / sizeof(uint64_t)), static_cast<std::size_t>(1)), 
+        k, 
+        0
+    );
     while(hasher.roll()) {
-        const auto idx = hasher.hashes()[0] >> shift;
-        const auto lsb = hasher.hashes()[0] & mask;
+        hash_t hval = *reinterpret_cast<hash_t const*>(hasher.hashes());
+        const auto idx = hval >> shift;
+        const auto lsb = hval & mask;
         const std::size_t v = clz(lsb) + 1 - b;
         if (v > registers.at(idx)) registers[idx] = v;
         ++total_seen_kmers;
@@ -60,16 +92,26 @@ HyperLogLog::add(char const * const seq, std::size_t length) noexcept
 }
 
 void
-HyperLogLog::add_fast(char const * const seq, std::size_t length, std::vector<hash_t>& buffer) noexcept
+HyperLogLog::add_fast(char const * const seq, const std::size_t length, std::vector<hash_t>& buffer) noexcept
 {
-    auto clz = [](hash_t x) {return x ? __builtin_clzll(x) : 64;};
-    nthash::NtHash hasher(seq, length, 1, k, 0);
+    nthash::NtHash hasher(
+        seq, 
+        length, 
+        std::max(static_cast<std::size_t>(sizeof(hash_t) / sizeof(uint64_t)), static_cast<std::size_t>(1)), 
+        k, 
+        0
+    );
     buffer.clear();
-    while(hasher.roll()) buffer.push_back(hasher.hashes()[0]);
+    while(hasher.roll()) {
+        hash_t hval = *reinterpret_cast<hash_t const*>(hasher.hashes());
+        // std::cerr << uint64_t(hval >> 64) << uint64_t(hval) <<  "\n";
+        buffer.push_back(hval);
+    }
     for (auto hash : buffer) {
         const auto idx = hash >> shift;
         const auto lsb = hash & mask;
         const std::size_t v = clz(lsb) + 1 - b;
+        assert(v < BITS_IN_BYTE * sizeof(hash_t));
         if (v > registers.at(idx)) registers[idx] = v;
         ++total_seen_kmers;
     }
@@ -90,8 +132,9 @@ HyperLogLog::size() const noexcept
 std::size_t
 HyperLogLog::count() const noexcept
 {
-    // DO NOT make registers.size() ** 2 alone because if b >= 32 we have an integer overflow
-    const std::size_t raw_estimate = (alpha_m * harmonic_mean() * registers.size()) * registers.size();
+    // !!! DO NOT compute registers.size()**2 first because if b >= 32 we have an integer overflow
+    auto hmean = harmonic_mean();
+    const std::size_t raw_estimate = (alpha_m * hmean * registers.size()) * registers.size(); // !!!
     return static_cast<std::size_t>(bias_correction(raw_estimate));
 }
 
@@ -130,8 +173,8 @@ HyperLogLog::store(std::ostream& ostrm) const
     // save k, b, total_seen_kmers;
     ostrm.write(reinterpret_cast<const char*>(&k), sizeof(k));
     ostrm.write(reinterpret_cast<const char*>(&b), sizeof(b));
-    ostrm.write(reinterpret_cast<const char*>(&total_seen_kmers), sizeof(total_seen_kmers)); // TODO fix endianess
-    ostrm.write(reinterpret_cast<const char*>(registers.data()), registers.size()); // uint8_t so no need to endianess nor sizeof
+    ostrm.write(reinterpret_cast<const char*>(&total_seen_kmers), sizeof(total_seen_kmers));
+    ostrm.write(reinterpret_cast<const char*>(registers.data()), registers.size());
 }
 
 void 
@@ -150,22 +193,32 @@ HyperLogLog::load(std::string const& sketch_filename) {
 void
 HyperLogLog::init()
 {
-    registers.resize(static_cast<std::size_t>(1) << b);
+    registers.resize(static_cast<hash_t>(1) << b);
     alpha_m = 0.7213 / (1 + 1.079 / registers.size());
-    shift = (8 * sizeof(hash_t) - b);
-    mask = (static_cast<std::size_t>(1) << shift) - 1;
+    shift = (BITS_IN_BYTE * sizeof(hash_t) - b);
+    mask = (static_cast<hash_t>(1) << shift) - 1;
+}
+
+void
+HyperLogLog::sanitize_endianness() const
+{
+    int n = 1;
+    bool little_endian = (*(char *)&n == 1);
+    if (not little_endian) {
+        throw std::runtime_error("This implementation of HLL sketches only works on Little Endan architectures");
+    }
 }
 
 void 
-HyperLogLog::sanitize_kmer_length(std::size_t kmer_length) const
+HyperLogLog::sanitize_kmer_length(const std::size_t kmer_length) const
 {
-    if (kmer_length > 32) throw std::invalid_argument("k-mer length should be 0 < k <= 32");
+    if (kmer_length > (BITS_IN_BYTE * sizeof(hash_t) / 2)) throw std::invalid_argument(std::string("k-mer length should be 0 < k <= ") + std::to_string(BITS_IN_BYTE * sizeof(hash_t) / 2));
 }
 
 void 
-HyperLogLog::sanitize_b(std::size_t bval) const 
+HyperLogLog::sanitize_b(const std::size_t bval) const 
 {
-    if (bval >= 64) throw std::invalid_argument("Number of indexing bits should be < 64");
+    if (bval >= BITS_IN_BYTE * sizeof(hash_t)) throw std::invalid_argument(std::string("Number of indexing bits should be < ") + std::to_string(BITS_IN_BYTE * sizeof(hash_t)));
 }
 
 bool 
@@ -182,14 +235,14 @@ HyperLogLog::harmonic_mean() const noexcept
 {
     double sum_of_inverses = 0;
     for (auto r : registers) {
-        auto toadd = 1.0 / (static_cast<std::size_t>(1) << r);
+        auto toadd = 1.0 / (static_cast<hash_t>(1) << r);
         sum_of_inverses += toadd;
     }
     return 1.0 / sum_of_inverses;
 }
 
 double
-HyperLogLog::bias_correction(double raw_estimate) const noexcept
+HyperLogLog::bias_correction(const double raw_estimate) const noexcept
 {
     if (raw_estimate <= 2.5 * registers.size()) { // linear counting
         std::size_t count = 0;
@@ -197,7 +250,7 @@ HyperLogLog::bias_correction(double raw_estimate) const noexcept
         if (count != 0) return registers.size() * std::log(static_cast<double>(registers.size()) / count);
     }
     if constexpr (sizeof(hash_t) == sizeof(uint32_t)) {
-        if (raw_estimate > (static_cast<uint64_t>(1) << 32) / 30) { // large range correction
+        if (raw_estimate > (static_cast<hash_t>(1) << 32) / 30) { // large range correction
             return -std::pow(2, 32) * std::log(1 - raw_estimate / std::pow(2, 32));
         }
     }
