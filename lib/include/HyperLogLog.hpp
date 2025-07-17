@@ -11,15 +11,15 @@ class HyperLogLog
 {
     private:
         using register_t = uint8_t;
+        using hash_t = __uint128_t;
         
     public:
-        using hash_t = __uint128_t;
         HyperLogLog();
         HyperLogLog(const uint8_t kmer_length, const uint8_t msb_length);
         HyperLogLog(const uint8_t kmer_length, const double error_rate);
         HyperLogLog(std::istream& istrm);
-        void add(char const * const seq, const std::size_t length) noexcept;
-        void add_fast(char const * const seq, const std::size_t length, std::vector<hash_t>& buffer) noexcept;
+        void naive_add(char const * const seq, const std::size_t length) noexcept;
+        void buffered_add(char const * const seq, const std::size_t length, std::vector<uint64_t>& buffer) noexcept;
         void clear() noexcept;
         std::size_t size() const noexcept;
         std::size_t count() const noexcept;
@@ -39,6 +39,9 @@ class HyperLogLog
         bool compatible(const HyperLogLog& other) const noexcept;
         double harmonic_mean() const noexcept;
         double bias_correction(const double raw_estimate) const noexcept;
+        int clz(const uint32_t x) const noexcept;
+        int clz(const uint64_t x) const noexcept;
+        int clz(const __uint128_t x) const noexcept;
         uint8_t k;
         uint8_t b;
         std::vector<register_t> registers;

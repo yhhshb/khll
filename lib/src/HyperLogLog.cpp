@@ -8,23 +8,6 @@
 
 #define BITS_IN_BYTE 8
 
-int clz(const uint32_t x)
-{
-    return x ? __builtin_clz(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
-}
-
-int clz(const uint64_t x)
-{
-    return x ? __builtin_clzll(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
-}
-
-int clz(const __uint128_t x) 
-{
-    uint64_t const* view = reinterpret_cast<uint64_t const*>(&x);
-    if (view[1] == 0) return 64 + clz(view[0]);
-    return clz(view[1]);
-}
-
 namespace sketching {
 
 HyperLogLog::HyperLogLog() 
@@ -72,7 +55,7 @@ HyperLogLog::HyperLogLog(std::istream& istrm)
 }
 
 void
-HyperLogLog::add(char const * const seq, const std::size_t length) noexcept
+HyperLogLog::naive_add(char const * const seq, const std::size_t length) noexcept
 {
     nthash::NtHash hasher(
         seq, 
@@ -92,8 +75,10 @@ HyperLogLog::add(char const * const seq, const std::size_t length) noexcept
 }
 
 void
-HyperLogLog::add_fast(char const * const seq, const std::size_t length, std::vector<hash_t>& buffer) noexcept
+HyperLogLog::buffered_add(char const * const seq, const std::size_t length, std::vector<uint64_t>& buffer) noexcept
 {
+    const std::size_t pack_shift = BITS_IN_BYTE * (sizeof(uint64_t) - sizeof(register_t));
+    const uint64_t pack_mask = (static_cast<std::size_t>(1) << pack_shift) - 1;
     nthash::NtHash hasher(
         seq, 
         length, 
@@ -103,15 +88,19 @@ HyperLogLog::add_fast(char const * const seq, const std::size_t length, std::vec
     );
     buffer.clear();
     while(hasher.roll()) {
-        hash_t hval = *reinterpret_cast<hash_t const*>(hasher.hashes());
-        // std::cerr << uint64_t(hval >> 64) << uint64_t(hval) <<  "\n";
-        buffer.push_back(hval);
-    }
-    for (auto hash : buffer) {
-        const auto idx = hash >> shift;
-        const auto lsb = hash & mask;
+        const hash_t hval = *reinterpret_cast<hash_t const*>(hasher.hashes());
+        const auto idx = hval >> shift;
+        const auto lsb = hval & mask;
         const std::size_t v = clz(lsb) + 1 - b;
         assert(v < BITS_IN_BYTE * sizeof(hash_t));
+        assert(idx < pack_mask); // idx must fit into 56 bits
+        assert(v < std::numeric_limits<register_t>::max()); // v must fit into registers
+        // std::cerr << uint64_t(hval >> 64) << uint64_t(hval) <<  "\n";
+        buffer.push_back(v << pack_shift | idx);
+    }
+    for (auto pack : buffer) {
+        register_t v = pack >> pack_shift;
+        std::size_t idx = pack & pack_mask;
         if (v > registers.at(idx)) registers[idx] = v;
         ++total_seen_kmers;
     }
@@ -255,6 +244,26 @@ HyperLogLog::bias_correction(const double raw_estimate) const noexcept
         }
     }
     return raw_estimate;
+}
+
+int 
+HyperLogLog::clz(const uint32_t x) const noexcept
+{
+    return x ? __builtin_clz(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
+}
+
+int 
+HyperLogLog::clz(const uint64_t x) const noexcept
+{
+    return x ? __builtin_clzll(x) : (BITS_IN_BYTE * sizeof(sketching::HyperLogLog::hash_t));
+}
+
+int 
+HyperLogLog::clz(const __uint128_t x) const noexcept
+{
+    uint64_t const* view = reinterpret_cast<uint64_t const*>(&x);
+    if (view[1] == 0) return 64 + clz(view[0]);
+    return clz(view[1]);
 }
 
 } // namespace sketching
