@@ -207,7 +207,8 @@ HyperLogLog::sanitize_kmer_length(const std::size_t kmer_length) const
 void 
 HyperLogLog::sanitize_b(const std::size_t bval) const 
 {
-    if (bval >= BITS_IN_BYTE * sizeof(hash_t)) throw std::invalid_argument(std::string("Number of indexing bits should be < ") + std::to_string(BITS_IN_BYTE * sizeof(hash_t)));
+    const std::size_t pack_shift = BITS_IN_BYTE * (sizeof(uint64_t) - sizeof(register_t));
+    if (bval >= pack_shift) throw std::invalid_argument(std::string("Number of indexing bits should be < ") + std::to_string(pack_shift));
 }
 
 bool 
