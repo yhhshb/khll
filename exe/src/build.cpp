@@ -41,10 +41,9 @@ int build_main(const argparse::ArgumentParser& parser)
     }
 
     kseq_t* seq = kseq_init(fp);
-    std::vector<uint64_t> buffer;
     while (kseq_read(seq) >= 0) {
         if (g and seq->seq.l < k) continue;
-        hll.buffered_add(seq->seq.s, seq->seq.l, buffer);
+        hll.add(seq->seq.s, seq->seq.l);
         if (passthrough) {
             std::cout <<  ">" << std::string(seq->name.s, seq->name.l) << "\n";
             std::cout << std::string(seq->seq.s, seq->seq.l) << "\n";

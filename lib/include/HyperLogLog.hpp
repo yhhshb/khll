@@ -19,8 +19,7 @@ class HyperLogLog
         HyperLogLog(const uint8_t kmer_length, const uint8_t msb_length);
         HyperLogLog(const uint8_t kmer_length, const double error_rate);
         HyperLogLog(std::istream& istrm);
-        void naive_add(char const * const seq, const std::size_t length) noexcept;
-        void buffered_add(char const * const seq, const std::size_t length, std::vector<buffer_t>& buffer) noexcept;
+        void add(char const * const seq, const std::size_t length) noexcept;
         void clear() noexcept;
         std::size_t size() const noexcept;
         std::size_t count() const noexcept;

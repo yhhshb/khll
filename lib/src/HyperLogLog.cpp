@@ -5,6 +5,7 @@
 #include "../nthash/nthash.hpp"
 
 #include <iostream>
+#include <limits>
 
 #define BITS_IN_BYTE 8
 
@@ -55,7 +56,7 @@ HyperLogLog::HyperLogLog(std::istream& istrm)
 }
 
 void
-HyperLogLog::naive_add(char const * const seq, const std::size_t length) noexcept
+HyperLogLog::add(char const * const seq, const std::size_t length) noexcept
 {
     nthash::NtHash hasher(
         seq, 
@@ -69,38 +70,8 @@ HyperLogLog::naive_add(char const * const seq, const std::size_t length) noexcep
         const auto idx = hval >> shift;
         const auto lsb = hval & mask;
         const std::size_t v = clz(lsb) + 1 - b;
-        if (v > registers.at(idx)) registers[idx] = v;
-        ++total_seen_kmers;
-    }
-}
-
-void
-HyperLogLog::buffered_add(char const * const seq, const std::size_t length, std::vector<uint64_t>& buffer) noexcept
-{
-    const std::size_t pack_shift = BITS_IN_BYTE * (sizeof(uint64_t) - sizeof(register_t));
-    const uint64_t pack_mask = (static_cast<std::size_t>(1) << pack_shift) - 1;
-    nthash::NtHash hasher(
-        seq, 
-        length, 
-        std::max(static_cast<std::size_t>(sizeof(hash_t) / sizeof(uint64_t)), static_cast<std::size_t>(1)), 
-        k, 
-        0
-    );
-    buffer.clear();
-    while(hasher.roll()) {
-        const hash_t hval = *reinterpret_cast<hash_t const*>(hasher.hashes());
-        const auto idx = hval >> shift;
-        const auto lsb = hval & mask;
-        const std::size_t v = clz(lsb) + 1 - b;
         assert(v < BITS_IN_BYTE * sizeof(hash_t));
-        assert(idx < pack_mask); // idx must fit into 56 bits
         assert(v < std::numeric_limits<register_t>::max()); // v must fit into registers
-        // std::cerr << uint64_t(hval >> 64) << uint64_t(hval) <<  "\n";
-        buffer.push_back(v << pack_shift | idx);
-    }
-    for (auto pack : buffer) {
-        register_t v = pack >> pack_shift;
-        std::size_t idx = pack & pack_mask;
         if (v > registers.at(idx)) registers[idx] = v;
         ++total_seen_kmers;
     }
